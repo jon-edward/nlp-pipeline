@@ -17,7 +17,6 @@ from nlp_pipeline.conditions import (
 from nlp_pipeline.pipeline import NLPPipeline, PipelineRunResult
 from records import DictRecord
 from nlp_pipeline.stages.base import BaseStage
-from nlp_pipeline.stages.logistic_classifier import LogisticClassifier
 
 __all__ = [
     "Condition",
@@ -31,5 +30,4 @@ __all__ = [
     "NLPPipeline",
     "PipelineRunResult",
     "BaseStage",
-    "LogisticClassifier",
 ]

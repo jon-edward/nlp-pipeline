@@ -101,7 +101,9 @@ class RecordSlice(_RecordMapping):
 
     _keys: set[str]
 
-    def __init__(self, backing: _RecordMapping | None = None, keys: set[str] | None = None):
+    def __init__(
+        self, backing: _RecordMapping | None = None, keys: set[str] | None = None
+    ):
         self._backing = backing or {}
         self._keys = keys or set()
 

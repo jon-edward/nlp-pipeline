@@ -1,11 +1,5 @@
 """
-Conditions that gate whether a pipeline stage performs real work on a given
-record, or falls back to a default value.
-
-Every :class:`Condition` implements a single method, :meth:`Condition.matches`,
-which inspects a record (a plain ``dict``) and returns ``True`` if the owning
-stage should run its full logic for that record, or ``False`` if the stage
-should skip its work and fill in a default instead.
+Conditions that gate whether a pipeline stage receives a record.
 
 Example
 -------
@@ -34,32 +28,18 @@ import operator
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Callable, Sequence
+from typing import Any, Callable, Sequence, Literal, final
 
 from records import DictRecord
 
 
 @dataclass
 class Condition(ABC):
-    """Abstract base class for all pipeline stage run-conditions."""
+    """Abstract base class for all pipeline stage run conditions."""
 
     @abstractmethod
     def matches(self, record: DictRecord) -> bool:
-        """Return whether a stage should perform its full run for ``record``.
-
-        Parameters
-        ----------
-        record:
-            A single row of the pipeline's dataframe, represented as a dict
-            mapping column name to value.
-
-        Returns
-        -------
-        bool
-            ``True`` if the stage should do its normal work for this record.
-            ``False`` if the stage should skip its work and fill in a
-            default value instead (see :meth:`nlp_pipeline.stages.base.BaseStage.process_records`).
-        """
+        """Return whether a record should be passed to an owning stage."""
         raise NotImplementedError
 
 
@@ -72,6 +52,8 @@ class ColumnConditionOp(str, Enum):
     EQ = "eq"
     GE = "ge"
     LE = "le"
+    CONTAINS = "contains"
+    IS = "is"
 
 
 _TO_FUNC_OP: dict[ColumnConditionOp, Callable[[Any, Any], bool]] = {
@@ -81,6 +63,8 @@ _TO_FUNC_OP: dict[ColumnConditionOp, Callable[[Any, Any], bool]] = {
     ColumnConditionOp.EQ: operator.eq,
     ColumnConditionOp.GE: operator.ge,
     ColumnConditionOp.LE: operator.le,
+    ColumnConditionOp.CONTAINS: operator.contains,
+    ColumnConditionOp.IS: operator.is_,
 }
 
 
@@ -88,62 +72,67 @@ _TO_FUNC_OP: dict[ColumnConditionOp, Callable[[Any, Any], bool]] = {
 class ColumnCondition(Condition):
     """Compares a single record column against a fixed value.
 
-    Attributes
-    ----------
-    column_name:
-        The dict key (dataframe column) to read from the record.
-    op:
-        The comparison operator to apply.
-    value:
-        The right-hand operand to compare the column's value against.
-
-    Raises
-    ------
-    KeyError
-        If ``column_name`` is not present in the record.
+    By default, this will treat missing columns as ``None`` and treat type errors within the comparison as ``False``.
+    See :attr:`missing_col_key_error` and :attr:`type_error_as_false` to change this behavior.
     """
 
     column_name: str
+    """The dict key (dataframe column) to read from the record."""
+
     op: ColumnConditionOp
+    """The comparison operator to apply."""
+
     value: Any
+    """The right-hand operand to compare the column's value against."""
+
+    missing_col_key_error: bool = False
+    """Whether to raise a KeyError if the column is not present in the record or treat it as ``None``."""
+
+    type_error_as_false: bool = True
+    """Whether to treat type errors as ``False``."""
 
     def matches(self, record: DictRecord) -> bool:
-        if self.column_name not in record:
-            raise KeyError(
-                f"ColumnCondition references missing column '{self.column_name}'. "
-                f"Available columns: {', '.join(repr(key) for key in record.keys())}"
-            )
-        return _TO_FUNC_OP[self.op](record[self.column_name], self.value)
+        try:
+            call_op = _TO_FUNC_OP[self.op]
+        except KeyError:
+            raise ValueError(f"Unknown ColumnConditionOp: {self.op}")
+
+        try:
+            try:
+                return call_op(record[self.column_name], self.value)
+            except KeyError:
+                if self.missing_col_key_error:
+                    raise
+                return call_op(None, self.value)
+        except TypeError:
+            if self.type_error_as_false:
+                return False
+            raise
 
 
 @dataclass
 class FunctionCondition(Condition):
-    """Delegates to a user-supplied function for full custom logic.
-
-    Attributes
-    ----------
-    func:
-        A callable that accepts the full record dict and returns a bool.
-    """
+    """Delegates to a user-supplied function for full custom logic."""
 
     func: Callable[[DictRecord], bool]
+    """The function to delegate to that accepts the full record dict and returns whether it matches."""
 
     def matches(self, record: DictRecord) -> bool:
         return self.func(record)
 
 
+@final
 @dataclass
 class NoopCondition(Condition):
     """A condition that always matches. Used as the default for stages that
     should always run in full."""
 
-    def matches(self, record: DictRecord) -> bool:
+    def matches(self, record: DictRecord) -> Literal[True]:
         return True
 
 
 class ConditionGroupOp(str, Enum):
-    """Whether a :class:`ConditionGroup` requires all or any sub-conditions
-    to match."""
+    """Whether a :class:`ConditionGroup` requires all or any sub-conditions to match."""
 
     ALL = "all"
     ANY = "any"
@@ -151,20 +140,16 @@ class ConditionGroupOp(str, Enum):
 
 @dataclass
 class ConditionGroup(Condition):
-    """Combines several conditions with AND (``ALL``) or OR (``ANY``) logic.
+    """Combines several conditions with ``AND`` (:class:`~ConditionGroupOp.ALL`) or ``OR`` (:class:`~ConditionGroupOp.ANY`) logic.
 
-    Attributes
-    ----------
-    conditions:
-        The sub-conditions to evaluate. An empty sequence returns ``True``
-        for ``ALL`` (vacuous truth) and ``False`` for ``ANY``.
-    op:
-        Whether every condition must match (``ALL``) or at least one
-        (``ANY``).
+    Conditions are lazily evaluated in the order they appear in the list.
     """
 
     conditions: Sequence[Condition]
+    """The sub-conditions to evaluate."""
+
     op: ConditionGroupOp = ConditionGroupOp.ALL
+    """Whether every condition must match (``ALL``) or at least one (``ANY``)."""
 
     def matches(self, record: DictRecord) -> bool:
         if self.op == ConditionGroupOp.ALL:

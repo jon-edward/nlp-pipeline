@@ -3,30 +3,25 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Sequence
-import uuid
+from typing import Callable, MutableMapping
 
 import pandas as pd
-from tqdm import tqdm
 
 from nlp_pipeline.stages.base import BaseStage
+from nlp_pipeline.conditions import NoopCondition, Condition
+from nlp_pipeline.records import RecordMapping, RecordMappingSlice, DictRecord
+from nlp_pipeline.uuid_gen import default_uuid_generator
 
 
 @dataclass
 class PipelineRunResult:
-    """The output of an :meth:`NLPPipeline.run` call.
-
-    Attributes
-    ----------
-    df:
-        The input dataframe with each stage's output columns added, indexed
-        the same way as the input.
-    """
+    """The output of a :meth:`NLPPipeline.__call__` call."""
 
     df: pd.DataFrame
-
-
-_ID_PROBE_MAX_TRIES = 100
+    """
+    The input dataframe after modification from all stages. The output dataframe does not
+    necessarily follow the same order as the input dataframe.
+    """
 
 
 @dataclass
@@ -34,18 +29,8 @@ class NLPPipeline:
     """Orchestrates a sequence of :class:`~nlp_pipeline.stages.base.BaseStage`
     over a dataframe.
 
-    Add stages via ``pipeline.stages.append(...)``, then call :meth:`run`.
-    Each stage's :meth:`~nlp_pipeline.stages.base.BaseStage.fit` is called
-    once against the current batch of records before that stage's
-    :meth:`~nlp_pipeline.stages.base.BaseStage.run` is applied per-record, so
-    stateful stages (classifiers, cluster models) can train on the full
-    batch before predicting.
-
-    Attributes
-    ----------
-    stages:
-        The ordered list of stages to run. Each stage sees the columns added
-        by all prior stages.
+    Add stages via ``pipeline.stages.append(...)``, then call :meth:`~NLPPipeline.__call__`
+    to run the pipeline.
 
     Examples
     --------
@@ -54,7 +39,13 @@ class NLPPipeline:
     >>> result.df.head()
     """
 
-    stages: Sequence[BaseStage] = field(default_factory=list)
+    stages: list[BaseStage | Callable[[RecordMapping], None]] = field(
+        default_factory=list
+    )
+    """
+    The ordered list of stages to run. Each stage can be a function taking a :class:`~nlp_pipeline.records.RecordMapping` 
+    or a :class:`~nlp_pipeline.stages.base.BaseStage`.
+    """
 
     def __call__(self, df: pd.DataFrame) -> PipelineRunResult:
         """Run every stage, in order, over ``df``.
@@ -67,16 +58,27 @@ class NLPPipeline:
         Returns
         -------
         PipelineRunResult
-            Wraps the resulting dataframe with all stages' output columns.
+            The output dataframe.
         """
 
-        records = {
-            uuid.uuid4(): record_data for record_data in df.to_dict(orient="records")
+        uuid_gen = default_uuid_generator()
+        uuid_gen.reset()  # Reset the UUID generator at each run
+
+        records: MutableMapping[str, DictRecord] = {
+            uuid_gen.next(): record_data for record_data in df.to_dict(orient="records")
         }
 
         for stage in self.stages:
-            records = stage(records)
+            # Handle callable stages
+            run_if: Condition = getattr(stage, "run_if", NoopCondition())
 
-        df = pd.DataFrame.from_records(records)
-        df.drop(columns=[id_column], inplace=True, errors="ignore")
+            mapping = RecordMapping(records)
+
+            if not isinstance(run_if, NoopCondition):
+                keys = (key for key, value in records.items() if run_if.matches(value))
+                mapping = RecordMappingSlice(mapping, keys)
+
+            stage(mapping)
+
+        df = pd.DataFrame.from_records(tuple(records.values()))
         return PipelineRunResult(df=df)

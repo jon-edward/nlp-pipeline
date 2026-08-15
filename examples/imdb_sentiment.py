@@ -24,6 +24,7 @@ def imdb_dataset():
 @dataclass
 class TrimNoInference(BaseStage):
     """Custom stage that trims records that have no inference."""
+
     cols: Sequence[str]
 
     def process_records(self, run_records: Sequence[RunRecord]) -> Sequence[DictRecord]:
