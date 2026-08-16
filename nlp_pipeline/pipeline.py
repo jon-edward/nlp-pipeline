@@ -34,9 +34,9 @@ class NLPPipeline:
 
     Examples
     --------
-    >>> pipeline = NLPPipeline(stages=[my_qa_stage, my_classifier_stage])
-    >>> result = pipeline(df)
-    >>> result.df.head()
+    >>> pipeline = NLPPipeline(stages=[my_qa_stage, my_classifier_stage]) # doctest: +SKIP
+    >>> result = pipeline(df) # doctest: +SKIP
+    >>> result.df.head() # doctest: +SKIP
     """
 
     stages: list[BaseStage | Callable[[RecordMapping], None]] = field(

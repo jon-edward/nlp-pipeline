@@ -30,7 +30,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable, Sequence, Literal, final
 
-from records import DictRecord
+from nlp_pipeline.records import DictRecord
 
 
 @dataclass

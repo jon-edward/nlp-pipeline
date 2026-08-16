@@ -15,8 +15,14 @@ from nlp_pipeline.conditions import (
     NoopCondition,
 )
 from nlp_pipeline.pipeline import NLPPipeline, PipelineRunResult
-from records import DictRecord
-from nlp_pipeline.stages.base import BaseStage
+from nlp_pipeline.records import DictRecord
+from nlp_pipeline.stages import (
+    BaseStage,
+    KeywordExtractionStage,
+    TextClassificationStage,
+    TextClusteringStage,
+    TfidfVectorizeStage,
+)
 
 __all__ = [
     "Condition",
@@ -30,4 +36,8 @@ __all__ = [
     "NLPPipeline",
     "PipelineRunResult",
     "BaseStage",
+    "KeywordExtractionStage",
+    "TextClassificationStage",
+    "TextClusteringStage",
+    "TfidfVectorizeStage",
 ]

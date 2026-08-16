@@ -1,7 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "nlp-pipeline"
 version = "0.1.0"
-description = "Add your description here"
-readme = "README.md"
+description = "A small orchestration layer for composing NLP stages (QA, classification, clustering) over a pandas DataFrame."
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+    "pandas>=2.0",
+    "scikit-learn>=1.3",
+    "numpy>=1.24",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "pytest-cov>=4.1",
+]
+
+[tool.setuptools.packages.find]
+include = ["nlp_pipeline*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "nlp_pipeline"]
+addopts = "--doctest-modules --ignore=nlp_pipeline/__init__.py"

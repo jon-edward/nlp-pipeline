@@ -24,7 +24,7 @@ class BaseStage(ABC):
         """Perform the stage's work on the records in ``mapping``.
 
         This method should not return anything, and should modify ``mapping`` in-place through standard
-        dict operations (e.g. ``__setitem__``, ``__delitem__``). See :class:`RecordMapping` for specialized 
+        dict operations (e.g. ``__setitem__``, ``__delitem__``). See :class:`RecordMapping` for specialized
         convenience methods.
         """
         raise NotImplementedError

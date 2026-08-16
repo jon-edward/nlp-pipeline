@@ -219,3 +219,6 @@ __marimo__/
 
 # Development data
 /data/*
+!/data/.gitkeep
+
+/reports/*
