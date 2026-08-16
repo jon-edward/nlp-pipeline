@@ -30,28 +30,31 @@ jobs:
         run: python -m pip install --upgrade pip wheel
 
       - name: Build nlp_pipeline wheel and all dependency wheels
+        shell: pwsh
         run: |
-          mkdir -p wheelhouse
+          New-Item -ItemType Directory -Force -Path wheelhouse | Out-Null
           # `pip wheel .` builds a wheel for the local package (from
           # pyproject.toml in the repo root) AND resolves + builds/downloads
           # a wheel for every runtime dependency, transitively, into the
           # same output directory.
           pip wheel . -w wheelhouse
 
-      - name: List built wheels
-        run: ls -lh wheelhouse
-
       - name: Zip wheelhouse
         id: zip
+        shell: pwsh
         run: |
-          zip_name="nlp_pipeline-wheels-${{ github.event.release.tag_name }}.zip"
-          cd wheelhouse
-          zip -r "../${zip_name}" .
-          cd ..
-          echo "zip_name=${zip_name}" >> "$GITHUB_OUTPUT"
+          $tagName = "${{ github.event.release.tag_name }}"
+          if (-not $tagName) {
+            $tagName = "${{ github.ref_name }}"
+          }
+          $zipName = "nlp_pipeline-wheels-$tagName.zip"
+          Set-Location wheelhouse
+          Compress-Archive -Path .\* -DestinationPath ..\$zipName -Force
+          Set-Location ..
+          "zip_name=$zipName" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
       - name: Upload zip to the release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.release.tag_name }}
+          tag_name: ${{ github.event.release.tag_name || github.ref_name }}
           files: ${{ steps.zip.outputs.zip_name }}
